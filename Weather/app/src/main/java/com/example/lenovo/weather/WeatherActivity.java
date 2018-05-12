@@ -10,6 +10,7 @@ import android.support.v4.view.GravityCompat;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.Button;
@@ -25,6 +26,7 @@ import com.example.lenovo.weather.util.Utility;
 
 
 import java.io.IOException;
+import java.util.Calendar;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -35,6 +37,7 @@ import com.example.lenovo.weather.util.HttpUtil;
 ;
 import com.example.lenovo.weather.gson.Weather;
 import com.example.lenovo.weather.gson.Forecast;
+import com.example.lenovo.weather.view.WeatherChartView;
 
 public class WeatherActivity extends AppCompatActivity {
 
@@ -70,6 +73,9 @@ public class WeatherActivity extends AppCompatActivity {
 
     private Button navButton;
 
+    private String mWeatherId;
+    private WeatherChartView chartView;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -85,22 +91,22 @@ public class WeatherActivity extends AppCompatActivity {
 
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         String weatherString = prefs.getString("weather",null);
-        final String weatherId;
+        //final String weatherId;
         if(weatherString != null){
             //有缓存时直接解析天气预报
             Weather weather = Utility.handleWeatherResponse(weatherString);
-            weatherId = weather.basic.weatherId;
+            mWeatherId = weather.basic.weatherId;
             showWeatherInfo(weather);
         }else {
             //无缓存时区服务器查询天气
-            weatherId = getIntent().getStringExtra("weather_id");
+            mWeatherId = getIntent().getStringExtra("weather_id");
             weahterLayout.setVisibility(View.INVISIBLE);
-            requestWeather(weatherId);
+            requestWeather(mWeatherId);
         }
         swipeRefreshLayout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
             @Override
             public void onRefresh() {
-                requestWeather(weatherId);
+                requestWeather(mWeatherId);
             }
         });
 
@@ -140,6 +146,7 @@ public class WeatherActivity extends AppCompatActivity {
         swipeRefreshLayout.setColorSchemeResources(R.color.colorPrimary);
         drawerLayout = (DrawerLayout) findViewById(R.id.drawer_layout);
         navButton = (Button) findViewById(R.id.nav_button);
+        chartView = (WeatherChartView) findViewById(R.id.chart_view);
     }
 
     /**
@@ -159,6 +166,7 @@ public class WeatherActivity extends AppCompatActivity {
                             SharedPreferences.Editor editor = PreferenceManager.getDefaultSharedPreferences(WeatherActivity.this).edit();
                             editor.putString("weather", responseText);
                             editor.apply();
+                            mWeatherId = weather.basic.weatherId;
                             showWeatherInfo(weather);
                         } else {
                             Toast.makeText(WeatherActivity.this, "获取天气信息失败", Toast.LENGTH_SHORT).show();
@@ -218,6 +226,8 @@ public class WeatherActivity extends AppCompatActivity {
         String updateTime = weather.basic.update.updateTime.split(" ")[1];
         String degree = weather.now.temperature + "℃";
         String weatherInfo = weather.now.more.info;
+        int []max = new int[6];
+        int []min = new int[6];
         titleCity.setText(cityName);
         titleUpateTime.setText(updateTime);
         degreeText.setText(degree);
@@ -225,29 +235,28 @@ public class WeatherActivity extends AppCompatActivity {
         forecastLayout.removeAllViews();
         int i = 0;
         for (Forecast forecast : weather.forecastList) {
-            View view = LayoutInflater.from(this).inflate(R.layout.forecast_item, forecastLayout, false);
-            TextView dateText = (TextView) view.findViewById(R.id.date_text);
-            TextView infoText = (TextView) view.findViewById(R.id.info_txt);
-            TextView maxText = (TextView) view.findViewById(R.id.max_text);
-            TextView minText = (TextView) view.findViewById(R.id.min_text);
-            TextView dayText = (TextView) view.findViewById(R.id.day_text);
-            if(i==2){
-                dayText.setText("后天");
-            }
-            if(i==1){
-                dayText.setText("明天");
+            if(i<6) {
+                max[i] = Integer.parseInt(forecast.temperature.max);
+                min[i] = Integer.parseInt(forecast.temperature.min);
+                View view = LayoutInflater.from(this).inflate(R.layout.forecast_item, forecastLayout, false);
+                TextView dateText = (TextView) view.findViewById(R.id.date_text);
+                TextView infoText = (TextView) view.findViewById(R.id.info_txt);
+                TextView maxText = (TextView) view.findViewById(R.id.max_text);
+                TextView minText = (TextView) view.findViewById(R.id.min_text);
+                String date[] = forecast.date.split("-");
+                dateText.setText(date[1]+"-"+date[2]);
+                infoText.setText(forecast.more.day_info);
+                maxText.setText(forecast.temperature.max + "℃");
+                minText.setText(forecast.temperature.min + "℃");
+                forecastLayout.addView(view);
                 i++;
             }
-            if(i==0){
-                dayText.setText("今天");
-                i++;
-            }
-            dateText.setText(forecast.date);
-            infoText.setText(forecast.more.info);
-            maxText.setText(forecast.temperature.max+"℃");
-            minText.setText(forecast.temperature.min+"℃");
-            forecastLayout.addView(view);
         }
+
+        chartView .setTempDay(max);
+        chartView .setTempNight(min);
+        chartView .invalidate();
+
         if (weather.aqi != null) {
             apiText.setText(weather.aqi.city.aqi);
             pm25Text.setText(weather.aqi.city.pm25);
